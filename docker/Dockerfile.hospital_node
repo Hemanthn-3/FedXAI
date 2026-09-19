@@ -1,0 +1,29 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/calls/*
+
+# ── Dependency layer (cached unless pyproject.toml changes) ──────────────────
+COPY pyproject.toml README.md ./
+COPY docker/install_deps.py ./install_deps.py
+
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+RUN pip install --no-cache-dir hatchling editables
+
+RUN python3 install_deps.py
+
+# ── Source layer ──────────────────────────────────────────────────────────────
+COPY backend ./backend
+COPY fl_server ./fl_server
+COPY hospital_nodes ./hospital_nodes
+COPY xai_engine ./xai_engine
+COPY analytics ./analytics
+
+RUN pip install --no-cache-dir -e . --no-build-isolation --no-deps
+
+# CMD will be overridden per node service inside docker-compose.yml

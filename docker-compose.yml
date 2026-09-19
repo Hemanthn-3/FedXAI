@@ -1,0 +1,170 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: fedpedia-postgres
+    environment:
+      POSTGRES_DB: fedpedia_xai
+      POSTGRES_USER: fedpedia
+      POSTGRES_PASSWORD: change-this-in-your-local-env
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U fedpedia -d fedpedia_xai" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: fedpedia-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: fedpedia-backend
+    environment:
+      - APP_NAME=FedPedia-XAI
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - API_V1_PREFIX=/api/v1
+      - 'CORS_ORIGINS=["http://localhost","http://127.0.0.1","http://localhost:80"]'
+      - 'TRUSTED_HOSTS=["localhost","127.0.0.1","backend","frontend"]'
+      - BOOTSTRAP_ADMIN_ENABLED=true
+      - DATABASE_URL=postgresql+asyncpg://fedpedia:change-this-in-your-local-env@postgres:5432/fedpedia_xai
+      - REDIS_URL=redis://redis:6379/0
+      - SESSION_BACKEND=redis
+      - RATE_LIMIT_BACKEND=redis
+      - JWT_SECRET_KEY=9e1d8825c3f8753230a10dfa6c6d05f3d5cfbe5f483d548f0291df4e4a8ea8a2
+      - JWT_REFRESH_SECRET_KEY=87e5b225c5d0d82937af96dfa2dfc838d2f1be3c4d7e9b048fa562bcdc91d1e4
+      - ARTIFACT_ROOT=/app/artifacts
+      - REPORT_ROOT=/app/reports
+      # AES-256-GCM PHI field encryption key (replace before deploying!)
+      # Generate: python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+      - PATIENT_FIELD_ENCRYPTION_KEY=replace-with-32-byte-base64-encoded-key
+    volumes:
+      - artifacts:/app/artifacts
+      - reports:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    command: sh -c "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "8000:8000"
+
+  fl_server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.fl_server
+    container_name: fedpedia-fl-server
+    environment:
+      - FL_SERVER_ADDRESS=0.0.0.0:8080
+      - FL_ROUNDS=20
+      - FL_CLIENTS=3
+      - FL_EPOCHS=5
+      - FL_BATCH_SIZE=32
+      - FL_LR=0.001
+      - FL_AGGREGATION_STRATEGY=fedavg
+      - FL_DATASET_TYPE=heart_disease
+      - FL_ARTIFACT_ROOT=/app/artifacts/models
+      # mTLS — set FL_USE_MTLS=true and run: python scripts/gen_certs.py first
+      - FL_USE_MTLS=false
+      - FL_CA_CERT_PATH=/app/certs/ca.crt
+      - FL_SERVER_CERT_PATH=/app/certs/server.crt
+      - FL_SERVER_KEY_PATH=/app/certs/server.key
+      # Differential Privacy
+      - FL_DP_ENABLED=false
+      - FL_DP_NOISE_SCALE=1.0
+      - FL_DP_MAX_GRAD_NORM=1.0
+    volumes:
+      - artifacts:/app/artifacts
+      - certs:/app/certs
+    ports:
+      - "8080:8080"
+
+  hospital_1:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.hospital_node
+    container_name: fedpedia-hospital-1
+    environment:
+      - HOSPITAL_NODE_ID=hospital_1
+      - HOSPITAL_DATA_PATH=/app/hospital_nodes/node_1/data.csv
+      - FL_DATASET_TYPE=heart_disease
+      - FL_SERVER_ADDRESS=fl_server:8080
+      - FL_USE_MTLS=false
+      - FL_CA_CERT_PATH=/app/certs/ca.crt
+      - FL_CLIENT_CERT_PATH=/app/certs/hospital_1.crt
+      - FL_CLIENT_KEY_PATH=/app/certs/hospital_1.key
+    volumes:
+      - certs:/app/certs
+    command: python -m hospital_nodes.node_1.client
+    depends_on:
+      - fl_server
+
+  hospital_2:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.hospital_node
+    container_name: fedpedia-hospital-2
+    environment:
+      - HOSPITAL_NODE_ID=hospital_2
+      - HOSPITAL_DATA_PATH=/app/hospital_nodes/node_2/data.csv
+      - FL_DATASET_TYPE=heart_disease
+      - FL_SERVER_ADDRESS=fl_server:8080
+      - FL_USE_MTLS=false
+      - FL_CA_CERT_PATH=/app/certs/ca.crt
+      - FL_CLIENT_CERT_PATH=/app/certs/hospital_2.crt
+      - FL_CLIENT_KEY_PATH=/app/certs/hospital_2.key
+    volumes:
+      - certs:/app/certs
+    command: python -m hospital_nodes.node_2.client
+    depends_on:
+      - fl_server
+
+  hospital_3:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.hospital_node
+    container_name: fedpedia-hospital-3
+    environment:
+      - HOSPITAL_NODE_ID=hospital_3
+      - HOSPITAL_DATA_PATH=/app/hospital_nodes/node_3/data.csv
+      - FL_DATASET_TYPE=heart_disease
+      - FL_SERVER_ADDRESS=fl_server:8080
+      - FL_USE_MTLS=false
+      - FL_CA_CERT_PATH=/app/certs/ca.crt
+      - FL_CLIENT_CERT_PATH=/app/certs/hospital_3.crt
+      - FL_CLIENT_KEY_PATH=/app/certs/hospital_3.key
+    volumes:
+      - certs:/app/certs
+    command: python -m hospital_nodes.node_3.client
+    depends_on:
+      - fl_server
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: fedpedia-frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
+  artifacts:
+  reports:
+  certs:

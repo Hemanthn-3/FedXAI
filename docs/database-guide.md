@@ -1,0 +1,186 @@
+# FedPedia-XAI Database Guide
+
+## 1. Scope
+
+PostgreSQL stores platform identity, hospital tenancy, canonical patient
+records, model provenance, federated training history, predictions, XAI artifact
+metadata, and security audit events. Raw hospital training datasets remain at
+the hospital nodes and are not copied into the central database.
+
+SQLAlchemy 2 declarative models live in `backend/app/models`. Alembic migration
+files live in `database/migrations`.
+
+## 2. Entity relationships
+
+```text
+Hospital 1 ─── * User
+Hospital 1 ─── * Patient 1 ─── * Prediction 1 ─── 0..1 XAIReport
+GlobalModel 1 ─── * Prediction
+GlobalModel 1 ─── * TrainingRound
+User 0..1 ─── * AuditLog
+```
+
+## 3. Tables
+
+### `users`
+
+Stores authentication identities and RBAC role assignment.
+
+Required project fields: `id`, `name`, `email`, `password_hash`, `role`,
+`created_at`.
+
+Additional integrity fields: optional `hospital_id`, `is_active`, `updated_at`.
+Doctor and hospital-admin roles must belong to a hospital. Emails are unique,
+lowercase, and indexed.
+
+### `hospitals`
+
+Stores tenant identity and the registered federated node identifier.
+
+Fields: `id`, `name`, `location`, `node_id`, `status`, `created_at`,
+`updated_at`.
+
+Both `name` and `node_id` are unique. Status supports `offline`, `online`,
+`training`, and `error`.
+
+### `patients`
+
+Stores the canonical clinical fields required by prediction and reporting.
+
+Required project fields: `id`, `hospital_id`, `age`, `bp`, `cholesterol`,
+`glucose`, `heart_rate`, `bmi`, `target`.
+
+`external_reference` allows a hospital to associate its own non-identifying
+record key. The pair `(hospital_id, external_reference)` is unique. Database
+checks reject impossible ranges and non-binary targets.
+
+Dataset-specific uploaded rows are managed locally by the Dataset Manager.
+They are not centralized in this table.
+
+### `predictions`
+
+Stores output and complete inference provenance.
+
+Required project fields: `id`, `patient_id`, `probability`, `risk_level`,
+`prediction`, `created_at`.
+
+Additional fields record dataset type, federated/centralized source, exact input
+feature snapshot, global model identity, doctor notes, and update timestamp.
+
+### `training_rounds`
+
+Stores a single federated round within a training run.
+
+Required project fields: `id`, `round_number`, `accuracy`, `loss`, `timestamp`.
+
+Additional fields capture the run ID, dataset, aggregation strategy, state,
+client counts, participating node IDs, per-client metrics, precision, recall,
+F1, ROC-AUC, duration timestamps, and generated model reference.
+
+`(run_id, round_number)` is unique.
+
+### `global_models`
+
+Stores model-registry metadata rather than model bytes.
+
+Required project fields: `id`, `version`, `path`, `created_at`.
+
+Additional fields capture SHA-256 checksum, dataset type, ML framework,
+federated/centralized source, metrics, activation state, and update timestamp.
+A partial unique index permits only one active model for each dataset/source
+pair.
+
+### `xai_reports`
+
+Stores explanation lifecycle and artifact locations.
+
+Required project fields: `id`, `prediction_id`, `shap_path`, `lime_path`.
+
+Additional fields persist feature rankings, local contributions, generation
+status, error details, and timestamps. Each prediction has at most one XAI
+report.
+
+### `audit_logs`
+
+Stores security and operational events.
+
+Required project fields: `id`, `user_id`, `action`, `timestamp`.
+
+Additional fields capture resource identity, structured details, IP address,
+and user agent. The migration installs a trigger that rejects row updates and
+deletes, making the table append-only.
+
+## 4. Enum types
+
+- `user_role`: doctor, hospital_admin, system_admin, researcher
+- `hospital_status`: offline, online, training, error
+- `dataset_type`: heart_disease, diabetes, breast_cancer
+- `risk_level`: low, moderate, high
+- `training_round_status`: pending, running, completed, failed, cancelled
+- `aggregation_strategy`: fedavg, weighted_fedavg
+- `model_framework`: pytorch, scikit_learn, xgboost
+- `model_source`: federated, centralized
+- `xai_status`: pending, completed, failed
+
+Enum values are stable storage contracts. Renaming one requires an explicit
+migration and compatibility review.
+
+## 5. Configuration
+
+The backend requires an async URL:
+
+```text
+postgresql+asyncpg://USER:PASSWORD@HOST:5432/DATABASE
+```
+
+Alembic automatically converts this to a synchronous `psycopg` URL for
+migration execution. Connection pool sizing is controlled with:
+
+- `DATABASE_POOL_SIZE`
+- `DATABASE_MAX_OVERFLOW`
+- `DATABASE_POOL_TIMEOUT_SECONDS`
+- `DATABASE_ECHO`
+
+## 6. Migration commands
+
+From the repository root:
+
+```powershell
+alembic current
+alembic upgrade head
+alembic downgrade -1
+alembic history
+```
+
+To create a reviewed migration after changing models:
+
+```powershell
+alembic revision --autogenerate -m "describe schema change"
+alembic upgrade head
+alembic check
+```
+
+Autogenerated migrations must be reviewed for enum changes, destructive
+operations, data backfills, locking risk, and downgrade correctness.
+
+## 7. Transaction rules
+
+- API requests receive one async session.
+- Successful request work commits once at the dependency boundary.
+- Exceptions trigger rollback before the connection returns to the pool.
+- Long-running ML and FL work must not hold request transactions open.
+- Artifact files must be written and checksummed before their registry row is
+  activated.
+- Model activation should deactivate the previous model and activate the new
+  one in the same transaction.
+
+## 8. Privacy and retention
+
+The central schema contains clinical features needed for direct prediction and
+reporting, but not raw uploaded training datasets. Deployments must define
+retention policies for patients, predictions, model artifacts, generated
+reports, and logs. Audit-log retention should use archival or partitioning
+rather than row mutation because the active table is append-only.
+
+Backups must be encrypted, access-controlled, tested for restoration, and
+managed under the healthcare organization's applicable legal requirements.

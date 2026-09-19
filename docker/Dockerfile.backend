@@ -1,0 +1,42 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# ── Dependency layer (cached unless pyproject.toml changes) ──────────────────
+COPY pyproject.toml README.md ./
+COPY docker/install_deps.py ./install_deps.py
+
+# Step 1: CPU-only PyTorch — must come first so pip sees it as satisfied
+# and skips the 1.5 GB CUDA variant when resolving the full dep set.
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# Step 2: Build tools required for editable installs
+RUN pip install --no-cache-dir hatchling editables
+
+# Step 3: All remaining runtime deps (reads pyproject.toml, skips torch)
+RUN python3 install_deps.py
+
+# ── Source layer (only re-runs when code changes) ─────────────────────────────
+COPY alembic.ini ./
+COPY database ./database
+COPY backend ./backend
+COPY fl_server ./fl_server
+COPY hospital_nodes ./hospital_nodes
+COPY xai_engine ./xai_engine
+COPY analytics ./analytics
+COPY seed_all.py ./seed_all.py
+COPY train_bootstrap_model.py ./train_bootstrap_model.py
+
+# Register editable package — all deps already installed above, this is instant
+RUN pip install --no-cache-dir -e . --no-build-isolation --no-deps
+
+EXPOSE 8000
+
+# Server will be run with live DB migrations in docker-compose.yml
+CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
