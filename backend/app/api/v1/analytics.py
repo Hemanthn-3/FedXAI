@@ -105,7 +105,90 @@ async def prediction_stats(
 # ---------------------------------------------------------------------------
 
 
-@router.post("/fairness", summary="Run fairness analysis on supplied or database group data")
+def _group_label(feature: str, raw: Any) -> str:
+    """Map a raw input feature value to a demographic group label."""
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return str(raw)
+    if feature == "sex":
+        return "male" if value == 1.0 else "female"
+    if value == int(value):
+        return str(int(value))
+    return str(value)
+
+
+async def _groups_from_db(session: AsyncSession, feature_name: str) -> dict[str, Any]:
+    """Build demographic groups from real stored predictions (no labels)."""
+    from sqlalchemy import select
+
+    from backend.app.models.prediction import Prediction
+
+    stmt = select(Prediction).order_by(Prediction.created_at.desc()).limit(500)
+    preds = (await session.execute(stmt)).scalars().all()
+
+    grouped: dict[str, list[int]] = {}
+    for p in preds:
+        feats = p.input_features or {}
+        if feature_name not in feats:
+            continue
+        label = _group_label(feature_name, feats[feature_name])
+        grouped.setdefault(label, []).append(int(p.prediction))
+
+    return {
+        label: {
+            "predictions": values,
+            "positive_rate": round(sum(values) / len(values), 4),
+        }
+        for label, values in grouped.items()
+    }
+
+
+async def _rankings_from_xai(
+    session: AsyncSession,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Derive federated/centralized feature rankings from stored XAI reports."""
+    from sqlalchemy import select
+
+    from backend.app.models.prediction import Prediction
+    from backend.app.models.xai_report import XAIReport
+
+    stmt = (
+        select(Prediction.model_source, XAIReport.feature_ranking)
+        .join(XAIReport, XAIReport.prediction_id == Prediction.id)
+        .order_by(XAIReport.created_at.desc())
+        .limit(50)
+    )
+    rows = (await session.execute(stmt)).all()
+
+    totals: dict[str, dict[str, float]] = {"federated": {}, "centralized": {}}
+    for source, ranking in rows:
+        bucket = totals.get(str(source.value if hasattr(source, "value") else source))
+        if not bucket or not ranking:
+            continue
+        for item in ranking:
+            feature = item.get("feature")
+            if not feature:
+                continue
+            try:
+                score = abs(float(item.get("abs_contribution", item.get("contribution", 0.0))))
+            except (TypeError, ValueError):
+                continue
+            bucket[str(feature)] = bucket.get(str(feature), 0.0) + score
+
+    def top(bucket: dict[str, float]) -> list[dict[str, Any]]:
+        return [
+            {"feature": f, "abs_contribution": round(s, 6)}
+            for f, s in sorted(bucket.items(), key=lambda kv: kv[1], reverse=True)
+        ]
+
+    return top(totals["federated"]), top(totals["centralized"])
+
+
+@router.post(
+    "/fairness",
+    summary="Run fairness analysis on real stored predictions",
+)
 async def fairness_analysis(
     payload: dict[str, Any],
     current_user: User = Depends(  # noqa: ARG001
@@ -114,84 +197,32 @@ async def fairness_analysis(
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """
-    Run bias detection and group-level fairness analysis dynamically from DB predictions.
+    Group-level fairness analysis built from real stored predictions.
+
+    The caller only supplies ``feature_name`` and ``privileged_group``; groups
+    are computed server-side from Prediction rows. Feature influence rankings
+    come from stored XAI reports. With no recorded ground truth, label-dependent
+    metrics (equalized odds, accuracy) are omitted rather than faked.
     """
-    from sqlalchemy import select
-    from backend.app.models.prediction import Prediction
+    feature_name: str = str(payload.get("feature_name", "sex"))
+    privileged_group: str = str(payload.get("privileged_group", "male"))
+    supplied_groups: dict[str, Any] = payload.get("groups") or {}
+    fl_ranking: list[dict[str, Any]] = payload.get("federated_ranking") or []
+    cl_ranking: list[dict[str, Any]] = payload.get("centralized_ranking") or []
 
-    feature_name: str = payload.get("feature_name", "sex")
-    privileged_group: str = payload.get("privileged_group", "male")
-    groups: dict[str, Any] = payload.get("groups", {})
-    fl_ranking: list[dict[str, Any]] = payload.get("federated_ranking", [])
-    cl_ranking: list[dict[str, Any]] = payload.get("centralized_ranking", [])
+    has_payload_data = any(
+        bool(g.get("predictions")) for g in supplied_groups.values()
+    )
+    groups: dict[str, Any]
+    if has_payload_data:
+        groups = supplied_groups
+    else:
+        groups = await _groups_from_db(session, feature_name)
 
-    # If groups in payload lack labels/predictions, build from real DB predictions
-    has_payload_data = False
-    if groups and privileged_group:
-        p_group = groups.get(privileged_group, {})
-        if p_group.get("predictions") and len(p_group.get("predictions", [])) > 0:
-            has_payload_data = True
-
-    if not has_payload_data:
-        stmt = select(Prediction).order_by(Prediction.created_at.desc()).limit(500)
-        res = await session.execute(stmt)
-        preds = res.scalars().all()
-
-        male_preds = []
-        male_labels = []
-        female_preds = []
-        female_labels = []
-
-        for p in preds:
-            feats = p.input_features or {}
-            sex_val = feats.get("sex", 1.0)
-            is_male = (float(sex_val) == 1.0)
-            pred_val = int(p.prediction)
-            # Use prediction as proxy for ground truth in clinical evaluation if unlabelled
-            label_val = pred_val
-
-            if is_male:
-                male_preds.append(pred_val)
-                male_labels.append(label_val)
-            else:
-                female_preds.append(pred_val)
-                female_labels.append(label_val)
-
-        if not male_preds:
-            male_preds = [0, 1, 1, 0, 1, 0, 1, 1, 0, 1]
-            male_labels = [0, 1, 1, 0, 1, 0, 1, 1, 0, 1]
-        if not female_preds:
-            female_preds = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0]
-            female_labels = [0, 1, 0, 0, 1, 0, 0, 1, 0, 0]
-
-        m_pos_rate = round(sum(male_preds) / len(male_preds), 4)
-        f_pos_rate = round(sum(female_preds) / len(female_preds), 4)
-
-        groups = {
-            "male": {
-                "labels": male_labels,
-                "predictions": male_preds,
-                "positive_rate": m_pos_rate,
-            },
-            "female": {
-                "labels": female_labels,
-                "predictions": female_preds,
-                "positive_rate": f_pos_rate,
-            },
-        }
-
-    if not fl_ranking:
-        fl_ranking = [
-            {"feature": "oldpeak", "abs_contribution": 0.235},
-            {"feature": "exang", "abs_contribution": 0.185},
-            {"feature": "thalach", "abs_contribution": 0.138},
-        ]
-    if not cl_ranking:
-        cl_ranking = [
-            {"feature": "oldpeak", "abs_contribution": 0.240},
-            {"feature": "exang", "abs_contribution": 0.190},
-            {"feature": "thalach", "abs_contribution": 0.142},
-        ]
+    if not fl_ranking or not cl_ranking:
+        db_fl, db_cl = await _rankings_from_xai(session)
+        fl_ranking = fl_ranking or db_fl
+        cl_ranking = cl_ranking or db_cl
 
     builder = FairnessReportBuilder()
 
@@ -210,4 +241,4 @@ async def fairness_analysis(
         )
         builder.set_feature_comparison(comparison)
 
-    return builder.build()
+    return builder.build(data_available=bool(groups))

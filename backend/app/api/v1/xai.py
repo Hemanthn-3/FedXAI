@@ -46,7 +46,7 @@ async def _assert_prediction_scope(
 
 
 @router.post(
-    "/reports/{prediction_id}",
+    "/predictions/{prediction_id}/reports",
     response_model=XAIReportResponse,
     status_code=status.HTTP_201_CREATED,
 )

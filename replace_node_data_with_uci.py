@@ -7,11 +7,10 @@ then distributes across the 3 hospital node CSVs and copies them into Docker.
 """
 import hashlib
 import subprocess
-import sys
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
+from sklearn.model_selection import train_test_split
 
 # ── Step 1: Download real UCI Cleveland dataset ────────────────────────────
 UCI_URL = (
@@ -66,12 +65,12 @@ print(df.head(3).to_string())
 print("\n[3/5] Splitting into 3 hospital node partitions (stratified) ...")
 
 # Stratified split: ~100, ~100, ~103 rows per node
-from sklearn.model_selection import train_test_split
-
 # First split: 2/3 vs 1/3
 part_a, node_3_df = train_test_split(df, test_size=1/3, random_state=42, stratify=df[TARGET_COL])
 # Second split: 1/2 vs 1/2 of part_a
-node_1_df, node_2_df = train_test_split(part_a, test_size=0.5, random_state=42, stratify=part_a[TARGET_COL])
+node_1_df, node_2_df = train_test_split(
+    part_a, test_size=0.5, random_state=42, stratify=part_a[TARGET_COL]
+)
 
 for name, node_df in [("node_1", node_1_df), ("node_2", node_2_df), ("node_3", node_3_df)]:
     pos = int(node_df[TARGET_COL].sum())
@@ -99,5 +98,7 @@ for name in ("node_1", "node_2", "node_3"):
         print(f"  [!] Failed to copy {src}: {result.stderr}")
 
 print("\n" + "=" * 65)
-print("  UCI data installed. Now run train_bootstrap_model.py and run_federated_rounds.py")
+print("  UCI data installed. Now run train_bootstrap_model.py, then")
+print("  `docker compose up` — the seeder registers the bootstrap model")
+print("  and the real Flower network (fl_server + hospital nodes) runs the rounds.")
 print("=" * 65 + "\n")

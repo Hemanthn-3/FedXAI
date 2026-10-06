@@ -1,7 +1,10 @@
-"""Healthcare dataset schema validation and local preprocessing for FL clients."""
+"""Healthcare dataset schema validation and shared preprocessing for FL clients."""
 
-from dataclasses import dataclass
+from __future__ import annotations
+
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import pandas as pd
@@ -53,9 +56,16 @@ DATASET_SCHEMAS: dict[DatasetType, DatasetSchema] = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class FederatedDataset:
-    """Preprocessed local train/test arrays for one hospital node."""
+    """Local train/test arrays for one hospital node.
+
+    ``x_train_raw`` / ``x_test_raw`` hold the imputed-but-unscaled arrays so the
+    shared preprocessing specification sent by the FL server can be re-applied
+    idempotently each round.  On load, arrays are locally scaled (legacy
+    behaviour for standalone runs); once the server sends a ``preprocessing``
+    spec, the shared transform supersedes it.
+    """
 
     x_train: np.ndarray
     x_test: np.ndarray
@@ -65,10 +75,13 @@ class FederatedDataset:
     dataset_type: DatasetType
     scaler: StandardScaler
     imputer: SimpleImputer
+    x_train_raw: np.ndarray | None = None
+    x_test_raw: np.ndarray | None = None
+    applied_preprocessing: dict[str, Any] | None = field(default=None, repr=False)
 
     @property
     def input_dim(self) -> int:
-        return self.x_train.shape[1]
+        return int(self.x_train.shape[1])
 
     @property
     def train_examples(self) -> int:
@@ -77,6 +90,44 @@ class FederatedDataset:
     @property
     def test_examples(self) -> int:
         return int(self.x_test.shape[0])
+
+    def apply_preprocessing(self, spec: dict[str, Any] | None) -> None:
+        """Apply a shared preprocessing spec to the raw arrays (idempotent)."""
+
+        if spec is None or spec == self.applied_preprocessing:
+            return
+        if self.x_train_raw is None or self.x_test_raw is None:
+            raise ValueError("FederatedDataset is missing raw arrays for preprocessing")
+        self.x_train = apply_shared_preprocessing(self.x_train_raw, spec)
+        self.x_test = apply_shared_preprocessing(self.x_test_raw, spec)
+        self.applied_preprocessing = dict(spec)
+
+
+def apply_shared_preprocessing(x: np.ndarray, spec: dict[str, Any] | None) -> np.ndarray:
+    """Transform raw feature rows using the server-provided preprocessing spec.
+
+    Supported types:
+      * ``identity``      — no change
+      * ``standardization`` — ``(x - means) / scales`` with per-feature arrays
+    """
+
+    if not spec:
+        return x
+    kind = str(spec.get("type", "identity")).lower()
+    if kind == "identity":
+        return x
+    if kind == "standardization":
+        means = np.asarray(spec.get("means", []), dtype=np.float32)
+        scales = np.asarray(spec.get("scales", []), dtype=np.float32)
+        if means.shape != scales.shape or means.ndim != 1:
+            raise ValueError("preprocessing means/scales must be 1-D arrays of equal length")
+        if means.shape[0] != x.shape[1]:
+            raise ValueError(
+                f"preprocessing expects {means.shape[0]} features, data has {x.shape[1]}"
+            )
+        safe_scales = np.where(scales == 0, 1.0, scales)
+        return ((x - means) / safe_scales).astype(np.float32)
+    raise ValueError(f"Unsupported preprocessing type: {kind}")
 
 
 def schema_for(dataset_type: DatasetType | str) -> DatasetSchema:
@@ -146,10 +197,11 @@ def load_healthcare_csv(
 
     imputer = SimpleImputer(strategy="median")
     scaler = StandardScaler()
-    x_train = imputer.fit_transform(x_train).astype(np.float32)
-    x_test = imputer.transform(x_test).astype(np.float32)
-    x_train = scaler.fit_transform(x_train).astype(np.float32)
-    x_test = scaler.transform(x_test).astype(np.float32)
+    x_train_imp = imputer.fit_transform(x_train).astype(np.float32)
+    x_test_imp = imputer.transform(x_test).astype(np.float32)
+    # Legacy local scaling — superseded once the server sends a shared spec.
+    x_train = scaler.fit_transform(x_train_imp).astype(np.float32)
+    x_test = scaler.transform(x_test_imp).astype(np.float32)
 
     return FederatedDataset(
         x_train=x_train,
@@ -160,4 +212,6 @@ def load_healthcare_csv(
         dataset_type=schema.dataset_type,
         scaler=scaler,
         imputer=imputer,
+        x_train_raw=x_train_imp,
+        x_test_raw=x_test_imp,
     )

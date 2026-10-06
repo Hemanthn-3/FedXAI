@@ -1,6 +1,6 @@
 """Federated-learning runtime configuration."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 from pydantic import Field, field_validator
@@ -30,6 +30,10 @@ class FLSettings(BaseSettings):
     fl_artifact_root: Path = Path("artifacts/models")
     fl_test_size: float = Field(default=0.2, gt=0, lt=0.9)
     fl_random_state: int = 42
+
+    # Database URL so the FL server can load the active global model and
+    # register rounds.  Optional — persistence is skipped when unset.
+    database_url: str | None = None
 
     # ── mTLS transport settings ─────────────────────────────────────────────
     fl_use_mtls: bool = False
@@ -67,6 +71,7 @@ class FederatedLearningConfig:
     artifact_root: Path = Path("artifacts/models")
     test_size: float = 0.2
     random_state: int = 42
+    database_url: str | None = None
 
     # ── mTLS transport settings ─────────────────────────────────────────────
     use_mtls: bool = False
@@ -96,6 +101,7 @@ class FederatedLearningConfig:
             artifact_root=resolved.fl_artifact_root,
             test_size=resolved.fl_test_size,
             random_state=resolved.fl_random_state,
+            database_url=resolved.database_url,
             # mTLS
             use_mtls=resolved.fl_use_mtls,
             ca_cert_path=resolved.fl_ca_cert_path,

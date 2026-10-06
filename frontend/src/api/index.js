@@ -36,7 +36,7 @@ export const predictionsApi = {
 
 // XAI & Reports API
 export const xaiApi = {
-  generate: (predictionId) => apiClient.post(`/xai/reports/${predictionId}`, {}),
+  generate: (predictionId) => apiClient.post(`/xai/predictions/${predictionId}/reports`, {}),
   getByPrediction: (predictionId) => apiClient.get(`/xai/predictions/${predictionId}`),
   downloadPdfBlob: (predictionId) => apiClient.get(`/reports/predictions/${predictionId}/pdf`, { responseType: 'blob' }),
   downloadPdfUrl: (predictionId) => `${apiClient.defaults.baseURL}/reports/predictions/${predictionId}/pdf`,

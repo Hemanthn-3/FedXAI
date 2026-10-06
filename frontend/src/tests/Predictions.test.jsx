@@ -70,7 +70,7 @@ describe('Predictions Page', () => {
     predictionsApi.list.mockResolvedValueOnce({ data: { items: [] } });
     render(<Predictions />);
     await waitFor(() => {
-      expect(screen.getByText('No predictions found.')).toBeDefined();
+      expect(screen.getByText(/No predictions found\./)).toBeDefined();
     });
   });
 

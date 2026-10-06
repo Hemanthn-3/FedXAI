@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import func, select, Integer, cast
+from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from analytics.engine import ComparisonReport, FLAnalyticsEngine
@@ -35,35 +35,6 @@ class AnalyticsService:
         stmt = stmt.limit(limit)
         result = await session.execute(stmt)
         rows = result.scalars().all()
-
-        if not rows:
-            # Fallback to active GlobalModel metrics
-            from backend.app.models.global_model import GlobalModel
-            gm_stmt = select(GlobalModel).where(GlobalModel.is_active.is_(True))
-            if dataset_type:
-                gm_stmt = gm_stmt.where(GlobalModel.dataset_type == dataset_type)
-            active_model = (await session.execute(gm_stmt.limit(1))).scalar_one_or_none()
-            if active_model:
-                m = active_model.metrics or {}
-                return [
-                    {
-                        "id": str(active_model.id),
-                        "round_number": 5,
-                        "dataset_type": active_model.dataset_type.value,
-                        "accuracy": float(m.get("accuracy", 0.7869)),
-                        "precision": float(m.get("precision", 0.8261)),
-                        "recall": float(m.get("recall", 0.7451)),
-                        "f1": float(m.get("f1", 0.7451)),
-                        "roc_auc": float(m.get("roc_auc", 0.8442)),
-                        "loss": float(m.get("loss", 0.4647)),
-                        "participating_clients": 3,
-                        "total_clients": 3,
-                        "participating_nodes": ["hospital_node_1", "hospital_node_2", "hospital_node_3"],
-                        "aggregation_strategy": "fedavg",
-                        "status": "completed",
-                        "timestamp": active_model.created_at.isoformat() if active_model.created_at else "",
-                    }
-                ]
 
         return [
             {
@@ -170,8 +141,12 @@ class AnalyticsService:
             func.count(Prediction.id).label("total"),
             func.avg(Prediction.probability).label("avg_probability"),
             func.sum(cast(Prediction.prediction == 1, Integer)).label("positive_count"),
-            func.sum(cast(Prediction.risk_level == RiskLevel.HIGH, Integer)).label("high_risk_count"),
-            func.sum(cast(Prediction.risk_level == RiskLevel.MODERATE, Integer)).label("mod_risk_count"),
+            func.sum(cast(Prediction.risk_level == RiskLevel.HIGH, Integer)).label(
+                "high_risk_count"
+            ),
+            func.sum(cast(Prediction.risk_level == RiskLevel.MODERATE, Integer)).label(
+                "mod_risk_count"
+            ),
             func.sum(cast(Prediction.risk_level == RiskLevel.LOW, Integer)).label("low_risk_count"),
         )
         if dataset_type is not None:

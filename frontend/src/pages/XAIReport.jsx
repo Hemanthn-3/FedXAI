@@ -33,6 +33,13 @@ const FEATURE_LABELS = {
 const featureLabel = (name) =>
   FEATURE_LABELS[String(name).toLowerCase()] || name;
 
+const formatFeatureValue = (value) => {
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+  return value == null ? '-' : String(value);
+};
+
 const formatLimeDescription = (desc, feature) => {
   if (!desc) return featureLabel(feature);
   let formatted = desc;
@@ -213,6 +220,42 @@ export const XAIReport = () => {
                 <span className="xai-value">{prediction.doctor_notes}</span>
               </div>
             )}
+          </div>
+
+          <div className="model-proof-panel">
+            <div className="model-proof-header">
+              <CheckCircle2 size={16} />
+              <span>Fresh model inference completed</span>
+            </div>
+            <div className="model-proof-meta">
+              <div>
+                <span className="xai-label">Prediction ID</span>
+                <span className="text-monospace">{prediction.id}</span>
+              </div>
+              <div>
+                <span className="xai-label">Model Record</span>
+                <span className="text-monospace">{prediction.global_model_id || '-'}</span>
+              </div>
+              <div>
+                <span className="xai-label">Model Source</span>
+                <span>{prediction.model_source?.replace('_', ' ') || '-'}</span>
+              </div>
+            </div>
+            <div className="model-vector">
+              <span className="xai-label">Feature Vector Sent To Model</span>
+              {prediction.input_features && Object.keys(prediction.input_features).length > 0 ? (
+                <div className="model-vector-grid">
+                  {Object.entries(prediction.input_features).map(([name, value]) => (
+                    <div className="model-vector-item" key={name}>
+                      <span>{featureLabel(name)}</span>
+                      <strong>{formatFeatureValue(value)}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-muted">No model input vector was stored for this prediction.</p>
+              )}
+            </div>
           </div>
         </div>
       )}

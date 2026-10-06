@@ -150,11 +150,13 @@ class SHAPExplanationEngine:
         write_json(
             output_dir / "manifest.json",
             {
-                "summary_plot": str(summary_plot_path),
-                "waterfall_plot": str(waterfall_plot_path),
-                "bar_plot": str(bar_plot_path),
-                "force_plot": str(force_plot_path),
-                "feature_ranking": str(feature_ranking_path),
+                # Filenames only — manifests must stay valid when the artifacts
+                # directory is mounted at a different path (e.g. across containers).
+                "summary_plot": summary_plot_path.name,
+                "waterfall_plot": waterfall_plot_path.name,
+                "bar_plot": bar_plot_path.name,
+                "force_plot": force_plot_path.name,
+                "feature_ranking": feature_ranking_path.name,
                 "expected_value": expected_value,
             },
         )

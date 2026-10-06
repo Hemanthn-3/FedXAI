@@ -109,7 +109,8 @@ async def http_error_handler(request: Request, exc: StarletteHTTPException) -> J
 
 
 def _clean_error_details(obj: Any) -> Any:
-    """Recursively convert bytes objects in validation error details to string to prevent JSON serialization errors."""
+    """Recursively convert bytes objects in validation error details to string
+    to prevent JSON serialization errors."""
     if isinstance(obj, dict):
         return {k: _clean_error_details(v) for k, v in obj.items()}
     elif isinstance(obj, list):

@@ -104,7 +104,9 @@ class PatientService:
         patient = await PatientService.get_by_id(session, patient_id)
         if patient is None:
             raise NotFoundError("Patient")
-        result = await session.execute(select(Prediction).where(Prediction.patient_id == patient_id))
+        result = await session.execute(
+            select(Prediction).where(Prediction.patient_id == patient_id)
+        )
         for prediction in result.scalars().all():
             await session.delete(prediction)
         await session.delete(patient)

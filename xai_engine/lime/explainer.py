@@ -41,7 +41,8 @@ class LIMEExplanationEngine:
         contribution: float,
         feature_names: tuple[str, ...] | list[str] | None = None,
     ) -> dict[str, float | str]:
-        # LIME labels can be double-bounded ("2.70 < oldpeak <= 3.29"), single-bounded ("oldpeak > 130"), or plain names.
+        # LIME labels can be double-bounded ("2.70 < oldpeak <= 3.29"),
+        # single-bounded ("oldpeak > 130"), or plain names.
         tokens = (
             label.replace("<=", " ")
             .replace(">=", " ")
@@ -129,9 +130,10 @@ class LIMEExplanationEngine:
         write_json(
             output_dir / "manifest.json",
             {
-                "local_explanation": str(local_plot_path),
-                "html": str(html_path),
-                "feature_contributions": str(contributions_path),
+                # Filenames only — see shap/explainer.py for rationale.
+                "local_explanation": local_plot_path.name,
+                "html": html_path.name,
+                "feature_contributions": contributions_path.name,
                 "top_features": top_features,
             },
         )

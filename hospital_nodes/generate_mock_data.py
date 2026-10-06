@@ -1,12 +1,14 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pandas as pd
+
 
 def generate_hospital_data(path: Path, rows: int = 100, seed: int = 42) -> None:
     """Generate deterministic healthcare mock data matching the heart disease schema."""
     np.random.seed(seed)
     records = []
-    for index in range(rows):
+    for _ in range(rows):
         target = int(np.random.choice([0, 1]))
         records.append({
             "age": float(np.random.randint(30, 80)),

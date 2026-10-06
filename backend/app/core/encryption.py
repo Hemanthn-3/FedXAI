@@ -23,7 +23,7 @@ Ciphertext wire format (base64-encoded):
 
 Environment variable:
     PATIENT_FIELD_ENCRYPTION_KEY — 32 raw bytes encoded as URL-safe base64.
-    Generate with: python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+    Generate with the command documented in ``.env.example``.
 
 SQLAlchemy integration:
     Use ``EncryptedFloat`` as the ``type_`` argument in ``mapped_column()``.
@@ -36,7 +36,7 @@ import os
 import struct
 
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
-from sqlalchemy import String, TypeDecorator
+from sqlalchemy import Text, TypeDecorator
 
 _NONCE_BYTES = 12  # 96-bit nonce recommended for GCM
 _ENV_KEY_NAME = "PATIENT_FIELD_ENCRYPTION_KEY"
@@ -45,6 +45,24 @@ _ENV_KEY_NAME = "PATIENT_FIELD_ENCRYPTION_KEY"
 def _load_key() -> bytes:
     """Load and validate the 32-byte AES key from the environment."""
     raw = os.environ.get(_ENV_KEY_NAME, "")
+    app_env = os.environ.get("APP_ENV", "development")
+    if not raw:
+        try:
+            from backend.app.core.config import get_settings
+
+            settings = get_settings()
+            raw = settings.patient_field_encryption_key.get_secret_value()
+            app_env = settings.app_env
+        except Exception:
+            raw = ""
+    if not raw or raw.startswith("replace-with-"):
+        if app_env.lower() == "production":
+            raise RuntimeError(
+                f"Missing environment variable '{_ENV_KEY_NAME}'. "
+                "Generate one with: python -c \"import secrets,base64; "
+                "print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())\""
+            )
+        raw = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
     if not raw:
         raise RuntimeError(
             f"Missing environment variable '{_ENV_KEY_NAME}'. "
@@ -133,7 +151,7 @@ class EncryptedFloat(TypeDecorator):
             bp: Mapped[float | None] = mapped_column(EncryptedFloat, nullable=True)
     """
 
-    impl = String
+    impl = Text
     cache_ok = True
 
     def process_bind_param(self, value: float | None, dialect) -> str | None:  # noqa: ANN001

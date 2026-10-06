@@ -15,7 +15,7 @@ class HealthcareMLP(nn.Module):
         input_dim: int,
         *,
         hidden_dims: tuple[int, int] = (32, 16),
-        dropout: float = 0.1,
+        dropout: float = 0.2,
     ) -> None:
         super().__init__()
         self.network = nn.Sequential(

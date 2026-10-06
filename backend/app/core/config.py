@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     report_root: Path = Path("reports")
 
     # ── Patient PHI field-level encryption (AES-256-GCM) ────────────────────
-    # Generate key: python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
+    # Generate key: see .env.example (base64 of 32 random bytes)
     patient_field_encryption_key: SecretStr = SecretStr("replace-with-32-byte-base64-encoded-key")
 
     @field_validator("api_v1_prefix")
@@ -84,7 +84,9 @@ class Settings(BaseSettings):
     @classmethod
     def validate_database_url(cls, value: str) -> str:
         if not (value.startswith("postgresql+asyncpg://") or value.startswith("sqlite+aiosqlite://")):
-            raise ValueError("DATABASE_URL must use either postgresql+asyncpg or sqlite+aiosqlite driver")
+            raise ValueError(
+                "DATABASE_URL must use either postgresql+asyncpg or sqlite+aiosqlite driver"
+            )
         return value
 
     @field_validator("session_backend", "rate_limit_backend")

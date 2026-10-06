@@ -41,7 +41,7 @@ from sklearn.metrics import (
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 
-from fl_server.server.model import HealthcareMLP, create_model
+from fl_server.server.model import HealthcareMLP
 
 # ==============================================================================
 #  TRAINING CONTRACT (R1–R4)
@@ -193,7 +193,10 @@ def train_model(
             val_loss = criterion(model(x_te), y_te).item()
 
         if epoch % 10 == 0 or epoch == 1:
-            print(f"  Epoch {epoch:3d}/{EPOCHS} | train_loss={epoch_loss:.4f} | val_loss={val_loss:.4f}")
+            print(
+                f"  Epoch {epoch:3d}/{EPOCHS} | train_loss={epoch_loss:.4f} "
+                f"| val_loss={val_loss:.4f}"
+            )
 
         # Early stopping
         if val_loss < best_val_loss - 1e-4:
@@ -255,7 +258,9 @@ def sha256(path: Path) -> str:
 
 def save_artifact(model: HealthcareMLP, scaler: StandardScaler, metrics: dict) -> Path:
     """Save model + scaler preprocessing params into the artifact (R8)."""
-    artifact_root = Path("/app/artifacts") if os.path.exists("/app/artifacts") else Path("artifacts")
+    artifact_root = (
+        Path("/app/artifacts") if os.path.exists("/app/artifacts") else Path("artifacts")
+    )
     target_dir = artifact_root / "models" / "heart_disease"
     target_dir.mkdir(parents=True, exist_ok=True)
 
@@ -321,7 +326,7 @@ def main() -> None:
     print(f"  {'Recall':<12}: {metrics['recall']:.4f}")
     print(f"  {'F1':<12}: {metrics['f1']:.4f}")
     print(f"  {'ROC-AUC':<12}: {metrics['roc_auc']:.4f}")
-    print(f"  Confusion matrix (rows=actual, cols=predicted):")
+    print("  Confusion matrix (rows=actual, cols=predicted):")
     print(f"    TN={metrics['tn']}  FP={metrics['fp']}")
     print(f"    FN={metrics['fn']}  TP={metrics['tp']}")
 

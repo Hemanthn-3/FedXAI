@@ -6,6 +6,7 @@ before this runs so pip skips the CUDA variant.
 """
 import subprocess
 import sys
+
 import tomllib
 
 with open("pyproject.toml", "rb") as f:

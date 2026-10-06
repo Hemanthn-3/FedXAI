@@ -39,6 +39,68 @@
   color: var(--text-primary);
 }
 
+.model-proof-panel {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.model-proof-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent-success);
+  font-size: 0.9rem;
+  font-weight: 700;
+  margin-bottom: 14px;
+}
+
+.model-proof-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.model-proof-meta > div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.model-vector {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.model-vector-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.model-vector-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 38px;
+  padding: 9px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.83rem;
+}
+
+.model-vector-item span {
+  color: var(--text-muted);
+}
+
+.model-vector-item strong {
+  color: var(--text-primary);
+  font-family: monospace;
+}
+
 /* Empty state */
 .xai-empty {
   text-align: center;

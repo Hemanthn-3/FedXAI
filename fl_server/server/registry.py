@@ -10,8 +10,8 @@ from typing import Any
 import numpy as np
 import torch
 
-from fl_server.server.enums import DatasetType, ModelSource
 from fl_server.server.dataset import schema_for
+from fl_server.server.enums import DatasetType, ModelSource
 from fl_server.server.model import create_model, set_model_parameters
 
 

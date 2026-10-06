@@ -333,3 +333,58 @@ def test_fairness_report_builder_no_bias() -> None:
     report = FairnessReportBuilder().add_group_analysis(analysis).build()
     assert "overall_bias_detected" in report
     assert "recommendation" in report
+
+
+# ---------------------------------------------------------------------------
+# Ground-truth-free fairness (real clinical predictions without labels)
+# ---------------------------------------------------------------------------
+
+
+def test_group_analysis_without_labels_omits_label_metrics() -> None:
+    analysis = GroupFairnessAnalysis(
+        feature_name="sex",
+        privileged_group="male",
+        groups={
+            "male": {"predictions": [1, 0, 1, 1], "positive_rate": 0.75},
+            "female": {"predictions": [0, 0, 1, 0], "positive_rate": 0.25},
+        },
+    )
+    metrics = analysis.group_metrics()
+    assert metrics["male"]["positive_rate"] == 0.75
+    assert "accuracy" not in metrics["male"]
+    assert "recall" not in metrics["male"]
+    assert analysis.equalized_odds_table() == {}
+    assert analysis.disparate_impact_table()["female"] == pytest.approx(0.25 / 0.75)
+    report = analysis.report()
+    assert report["ground_truth_available"] is False
+    # Bias still detectable from positive rates alone
+    assert report["bias_detected"] is True
+
+
+def test_group_analysis_with_labels_still_reports_full_metrics() -> None:
+    analysis = GroupFairnessAnalysis(
+        feature_name="sex",
+        privileged_group="male",
+        groups={
+            "male": {"labels": [1, 0, 1, 0], "predictions": [1, 0, 1, 0]},
+            "female": {"labels": [1, 0, 1, 0], "predictions": [0, 0, 1, 0]},
+        },
+    )
+    metrics = analysis.group_metrics()
+    assert "accuracy" in metrics["male"]
+    assert metrics["male"]["accuracy"] == 1.0
+    assert analysis.report()["ground_truth_available"] is True
+    assert analysis.equalized_odds_table() != {}
+
+
+def test_report_builder_without_data_is_honest() -> None:
+    report = FairnessReportBuilder().build(data_available=False)
+    assert report["data_available"] is False
+    assert report["overall_bias_detected"] is False
+    assert report["group_analyses"] == []
+    assert "No stored prediction data" in report["recommendation"]
+
+
+def test_report_builder_defaults_to_data_available() -> None:
+    report = FairnessReportBuilder().build()
+    assert report["data_available"] is True

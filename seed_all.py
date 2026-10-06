@@ -22,11 +22,9 @@ Permanent Login Credentials
 
 import asyncio
 import hashlib
-import os
 import uuid
 from pathlib import Path
 
-import torch
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -41,7 +39,6 @@ from backend.app.models.enums import (
 from backend.app.models.global_model import GlobalModel
 from backend.app.models.hospital import Hospital
 from backend.app.models.user import User
-from fl_server.server.model import create_model
 
 # ==============================================================================
 #  PERMANENT CREDENTIALS  —  edit here if you ever want to change them
@@ -54,6 +51,14 @@ HOSPITALS = [
 ]
 
 USERS = [
+    # -- System admin -----------------------------------------------------------
+    {
+        "name":      "System Administrator",
+        "email":     "sysadmin@fedpedia.com",
+        "password":  "SysAdmin@2025",
+        "role":      UserRole.SYSTEM_ADMIN,
+        "node_id":   None,
+    },
     # -- Admin -----------------------------------------------------------------
     {
         "name":      "Hospital Admin",
@@ -125,7 +130,7 @@ async def seed_hospitals(session) -> dict[str, Hospital]:
 async def seed_users(session, hospital_map: dict[str, Hospital]) -> None:
     """Upsert all users — update password/name if already present."""
     for ud in USERS:
-        hospital = hospital_map[ud["node_id"]]
+        hospital = hospital_map[ud["node_id"]] if ud["node_id"] else None
         result = await session.execute(
             select(User).where(User.email == ud["email"])
         )
@@ -138,7 +143,7 @@ async def seed_users(session, hospital_map: dict[str, Hospital]) -> None:
                 email=ud["email"],
                 password_hash=new_hash,
                 role=ud["role"],
-                hospital_id=hospital.id,
+                hospital_id=hospital.id if hospital else None,
                 is_active=True,
             )
             session.add(user)

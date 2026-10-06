@@ -57,7 +57,7 @@ PostgreSQL as JSONB for dashboard rendering.
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/api/v1/xai/reports/{prediction_id}` | Generate or reuse SHAP/LIME report |
+| POST | `/api/v1/xai/predictions/{prediction_id}/reports` | Generate or reuse SHAP/LIME report |
 | GET | `/api/v1/xai/reports/{report_id}` | Read XAI report by report ID |
 | GET | `/api/v1/xai/predictions/{prediction_id}` | Read XAI report by prediction ID |
 

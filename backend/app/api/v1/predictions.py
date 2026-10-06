@@ -124,7 +124,9 @@ async def list_predictions(
 ) -> Page[PredictionRead]:
     """List persisted predictions inside the user's hospital scope."""
 
-    scoped_hospital_id = None if current_user.role == UserRole.SYSTEM_ADMIN else current_user.hospital_id
+    scoped_hospital_id = (
+        None if current_user.role == UserRole.SYSTEM_ADMIN else current_user.hospital_id
+    )
     predictions, total = await PredictionService.list(
         session,
         offset=params.offset,

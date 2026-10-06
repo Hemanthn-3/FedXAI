@@ -31,9 +31,9 @@ export const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    const initial = setTimeout(fetchData, 0);
     const timer = setInterval(fetchData, 6000);
-    return () => clearInterval(timer);
+    return () => { clearTimeout(initial); clearInterval(timer); };
   }, []);
 
   if (loading) return <div className="loading-state"><Radio className="animate-spin" size={22} />&nbsp;Loading dashboard…</div>;

@@ -9,9 +9,9 @@ import flwr as fl
 import numpy as np
 from flwr.common import Scalar
 
-from fl_server.server.enums import DatasetType
 from fl_server.server.config import FederatedLearningConfig
 from fl_server.server.dataset import FederatedDataset, load_healthcare_csv
+from fl_server.server.enums import DatasetType
 from fl_server.server.model import create_model, get_model_parameters, set_model_parameters
 from fl_server.server.training import evaluate_model, set_training_seed, train_local_model
 
@@ -37,12 +37,22 @@ class HospitalFlowerClient(fl.client.NumPyClient):
     def get_parameters(self, config: dict[str, Scalar]) -> list[np.ndarray]:
         return get_model_parameters(self.model)
 
+    def _apply_config_preprocessing(self, config: dict[str, Scalar]) -> None:
+        """Reapply the server's shared preprocessing spec (raw-array based)."""
+
+        raw = config.get("preprocessing")
+        if raw is None:
+            return
+        spec = json.loads(raw) if isinstance(raw, str) else dict(raw)
+        self.dataset.apply_preprocessing(spec)
+
     def fit(
         self,
         parameters: list[np.ndarray],
         config: dict[str, Scalar],
     ) -> tuple[list[np.ndarray], int, dict[str, Scalar]]:
         set_model_parameters(self.model, parameters)
+        self._apply_config_preprocessing(config)
         epochs = int(config.get("epochs", self.config.epochs))
         batch_size = int(config.get("batch_size", self.config.batch_size))
         lr = float(config.get("lr", self.config.lr))
@@ -82,6 +92,7 @@ class HospitalFlowerClient(fl.client.NumPyClient):
         config: dict[str, Scalar],
     ) -> tuple[float, int, dict[str, Scalar]]:
         set_model_parameters(self.model, parameters)
+        self._apply_config_preprocessing(config)
         batch_size = int(config.get("batch_size", self.config.batch_size))
         metrics = evaluate_model(
             self.model,

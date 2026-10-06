@@ -144,7 +144,7 @@ features, the API returns a validation error listing missing features.
 
 | Method | Path | Auth | Purpose |
 |---|---|---|---|
-| POST | `/xai/reports/{prediction_id}` | Doctor | Generate SHAP and LIME artifacts |
+| POST | `/xai/predictions/{prediction_id}/reports` | Doctor | Generate SHAP and LIME artifacts |
 | GET | `/xai/reports/{report_id}` | Doctor | Read an XAI report by report ID |
 | GET | `/xai/predictions/{prediction_id}` | Doctor | Read an XAI report by prediction ID |
 

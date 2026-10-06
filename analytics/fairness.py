@@ -18,9 +18,18 @@ def _safe(value: float | None, default: float = 0.0) -> float:
 def _classification_metrics(
     labels: list[int], predictions: list[int]
 ) -> dict[str, float]:
-    """Compute accuracy, PPV (precision), TPR (recall), FPR for a binary group."""
+    """Compute accuracy, PPV (precision), TPR (recall), FPR for a binary group.
+
+    When ground-truth ``labels`` are unavailable (common for clinical predictions
+    without recorded outcomes), only count and positive rate are returned —
+    label-dependent metrics are omitted rather than faked.
+    """
+    positive_rate = round(sum(predictions) / len(predictions), 6) if predictions else 0.0
     if not labels:
-        return {"count": 0, "accuracy": 0.0, "precision": 0.0, "recall": 0.0, "fpr": 0.0}
+        return {
+            "count": len(predictions),
+            "positive_rate": positive_rate,
+        }
 
     tp = sum(1 for y, p in zip(labels, predictions, strict=True) if y == 1 and p == 1)
     tn = sum(1 for y, p in zip(labels, predictions, strict=True) if y == 0 and p == 0)
@@ -34,6 +43,7 @@ def _classification_metrics(
 
     return {
         "count": len(labels),
+        "positive_rate": positive_rate,
         "accuracy": round(accuracy, 6),
         "precision": round(precision, 6),
         "recall": round(recall, 6),
@@ -115,14 +125,19 @@ class GroupFairnessAnalysis:
         """
         self.feature_name = feature_name
         self.privileged_group = privileged_group
+        self._has_ground_truth = any(bool(g.get("labels")) for g in groups.values())
         self._metrics: dict[str, dict[str, float]] = {
             label: _classification_metrics(
-                g["labels"], g["predictions"]
+                g.get("labels") or [], g["predictions"]
             )
             for label, g in groups.items()
         }
         self._positive_rates: dict[str, float] = {
-            label: _safe(g.get("positive_rate"))
+            label: (
+                _safe(g["positive_rate"])
+                if g.get("positive_rate") is not None
+                else self._metrics[label].get("positive_rate", 0.0)
+            )
             for label, g in groups.items()
         }
 
@@ -156,6 +171,9 @@ class GroupFairnessAnalysis:
         }
 
     def equalized_odds_table(self) -> dict[str, dict[str, float]]:
+        # Needs ground truth — without labels the TPR/FPR comparison would be fake.
+        if not self._has_ground_truth:
+            return {}
         priv = self._privileged_metrics()
         results: dict[str, dict[str, float]] = {}
         for label, metrics in self._metrics.items():
@@ -205,6 +223,7 @@ class GroupFairnessAnalysis:
         return {
             "feature_name": self.feature_name,
             "privileged_group": self.privileged_group,
+            "ground_truth_available": self._has_ground_truth,
             "group_metrics": self.group_metrics(),
             "disparate_impact": self.disparate_impact_table(),
             "statistical_parity": self.statistical_parity_table(),
@@ -311,18 +330,26 @@ class FairnessReportBuilder:
         self._feature_comparison = comparison
         return self
 
-    def build(self) -> dict[str, Any]:
+    def build(self, *, data_available: bool = True) -> dict[str, Any]:
         any_bias = any(a.overall_bias_detected() for a in self._group_analyses)
+        if not data_available:
+            recommendation = (
+                "No stored prediction data available yet — run predictions first, "
+                "then re-check fairness."
+            )
+        elif any_bias:
+            recommendation = (
+                "Bias detected in one or more demographic groups. "
+                "Review training data distribution and consider reweighting or resampling."
+            )
+        else:
+            recommendation = "No significant bias detected across analysed groups."
         return {
+            "data_available": data_available,
             "overall_bias_detected": any_bias,
             "group_analyses": [a.report() for a in self._group_analyses],
             "feature_influence_comparison": (
                 self._feature_comparison.to_dict() if self._feature_comparison else None
             ),
-            "recommendation": (
-                "Bias detected in one or more demographic groups. "
-                "Review training data distribution and consider reweighting or resampling."
-                if any_bias
-                else "No significant bias detected across analysed groups."
-            ),
+            "recommendation": recommendation,
         }

@@ -22,6 +22,6 @@ def test_openapi_contains_phase_2_routes() -> None:
     assert "/api/v1/patients" in paths
     assert "/api/v1/predictions" in paths
     assert "/api/v1/predictions/preview" in paths
-    assert "/api/v1/xai/reports/{prediction_id}" in paths
+    assert "/api/v1/xai/predictions/{prediction_id}/reports" in paths
     assert "/api/v1/xai/predictions/{prediction_id}" in paths
     assert "/api/v1/health" in paths

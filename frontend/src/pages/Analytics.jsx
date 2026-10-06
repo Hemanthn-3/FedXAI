@@ -27,9 +27,9 @@ export const Analytics = () => {
   };
 
   useEffect(() => {
-    fetchData();
+    const initial = setTimeout(fetchData, 0);
     const timer = setInterval(fetchData, 6000);
-    return () => clearInterval(timer);
+    return () => { clearTimeout(initial); clearInterval(timer); };
   }, []);
 
   const runFairnessCheck = async () => {
@@ -38,28 +38,6 @@ export const Analytics = () => {
       const { data } = await analyticsApi.checkFairness({
         feature_name: 'sex',
         privileged_group: 'male',
-        groups: {
-          male: {
-            labels: [0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-            predictions: [0, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 1],
-            positive_rate: 0.60
-          },
-          female: {
-            labels: [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-            predictions: [0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-            positive_rate: 0.33
-          },
-        },
-        federated_ranking: [
-          { feature: 'oldpeak', abs_contribution: 0.235 },
-          { feature: 'exang', abs_contribution: 0.185 },
-          { feature: 'thalach', abs_contribution: 0.138 },
-        ],
-        centralized_ranking: [
-          { feature: 'oldpeak', abs_contribution: 0.240 },
-          { feature: 'exang', abs_contribution: 0.190 },
-          { feature: 'thalach', abs_contribution: 0.142 },
-        ],
       });
       setFairnessResult(data);
     } catch (err) {
@@ -83,30 +61,58 @@ export const Analytics = () => {
       </div>
 
       {fairnessResult && (
-        <div className={`glass-card animate-fade-in ${fairnessResult.overall_bias_detected ? 'border-danger' : 'border-success'}`}>
+        <div className={`glass-card animate-fade-in ${!fairnessResult.data_available ? '' : fairnessResult.overall_bias_detected ? 'border-danger' : 'border-success'}`}>
           <div className="flex-between" style={{ marginBottom: 16 }}>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               {fairnessResult.overall_bias_detected ? <AlertTriangle className="text-warning" /> : <TrendingUp className="text-success" />}
               Fairness Report
             </h3>
-            <span className={`badge ${fairnessResult.overall_bias_detected ? 'badge-danger' : 'badge-success'}`}>
-              {fairnessResult.overall_bias_detected ? 'Bias Detected' : 'Fair Model'}
+            <span
+              className={`badge ${
+                !fairnessResult.data_available
+                  ? 'badge-neutral'
+                  : fairnessResult.overall_bias_detected
+                    ? 'badge-danger'
+                    : 'badge-success'
+              }`}
+            >
+              {!fairnessResult.data_available
+                ? 'No Data'
+                : fairnessResult.overall_bias_detected
+                  ? 'Bias Detected'
+                  : 'Fair Model'}
             </span>
           </div>
           <p className="text-muted" style={{ marginBottom: 16 }}>{fairnessResult.recommendation}</p>
           <div className="table-responsive">
             <table className="data-table" style={{ background: 'rgba(0,0,0,0.2)' }}>
-              <thead><tr><th>Feature</th><th>Group</th><th>Accuracy</th><th>Disparate Impact</th></tr></thead>
+              <thead>
+                <tr>
+                  <th>Feature</th>
+                  <th>Group</th>
+                  <th>Positive Rate</th>
+                  <th>Accuracy</th>
+                  <th>Disparate Impact</th>
+                </tr>
+              </thead>
               <tbody>
                 {fairnessResult.group_analyses?.map((analysis, i) => (
-                  Object.keys(analysis.group_metrics).map(group => (
-                    <tr key={`${i}-${group}`}>
-                      <td>{analysis.feature_name}</td>
-                      <td>{group}</td>
-                      <td>{(analysis.group_metrics[group].accuracy * 100).toFixed(1)}%</td>
-                      <td>{analysis.disparate_impact[group]?.toFixed(3) || 'N/A'}</td>
-                    </tr>
-                  ))
+                  Object.keys(analysis.group_metrics).map(group => {
+                    const metrics = analysis.group_metrics[group];
+                    return (
+                      <tr key={`${i}-${group}`}>
+                        <td>{analysis.feature_name}</td>
+                        <td>{group}</td>
+                        <td>{metrics.positive_rate != null ? `${(metrics.positive_rate * 100).toFixed(1)}%` : '—'}</td>
+                        <td>
+                          {metrics.accuracy != null
+                            ? `${(metrics.accuracy * 100).toFixed(1)}%`
+                            : '—'}
+                        </td>
+                        <td>{analysis.disparate_impact[group]?.toFixed(3) || 'N/A'}</td>
+                      </tr>
+                    );
+                  })
                 ))}
               </tbody>
             </table>

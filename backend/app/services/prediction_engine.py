@@ -144,7 +144,7 @@ class PredictionEngine:
             )
         _log.debug(
             "[PredictionEngine] ordered feature vector (pre-scaling): %s",
-            dict(zip(feature_names, ordered_values)),
+            dict(zip(feature_names, ordered_values, strict=False)),
         )
         return vector, normalized_features
 
@@ -182,14 +182,15 @@ class PredictionEngine:
         # Validate feature count matches model input dimension
         if len(vector) != artifact.input_dim:
             raise AppError(
-                f"Feature vector length {len(vector)} does not match model input_dim {artifact.input_dim}",
+                f"Feature vector length {len(vector)} does not match "
+                f"model input_dim {artifact.input_dim}",
                 status_code=422,
                 code="feature_dim_mismatch",
             )
         processed = cls._apply_preprocessing(vector, artifact.preprocessing)
         _log.debug(
             "[PredictionEngine] post-scaling feature vector: %s",
-            dict(zip(artifact.feature_names, processed.tolist())),
+            dict(zip(artifact.feature_names, processed.tolist(), strict=False)),
         )
         model = create_model(artifact.input_dim)
         model.load_state_dict(artifact.state_dict, strict=True)

@@ -17,8 +17,54 @@ from backend.app.models.enums import DatasetType, TrainingRoundStatus
 from backend.app.models.global_model import GlobalModel
 from backend.app.models.training_round import TrainingRound
 from backend.app.models.user import User
+from backend.app.services.model_service import ModelService
 
 router = APIRouter()
+
+
+def _global_model_payload(model: GlobalModel) -> dict[str, Any]:
+    """Build API payload from DB row plus model artifact metadata."""
+
+    input_dim: int | None = None
+    feature_names: list[str] = []
+    warnings: list[str] = []
+    try:
+        artifact = ModelService.load_artifact(
+            path=model.path,
+            dataset_type=model.dataset_type,
+            expected_sha256=None,
+        )
+        input_dim = artifact.input_dim
+        feature_names = list(artifact.feature_names)
+        warnings = list(artifact.warnings)
+    except Exception as exc:  # noqa: BLE001 - metadata should not hide the DB row
+        warnings.append(f"Could not load artifact metadata: {exc}")
+
+    metrics = model.metrics or {}
+    client_metrics = metrics.get("client_metrics")
+    participating_hospitals = (
+        len(client_metrics)
+        if isinstance(client_metrics, dict)
+        else metrics.get("participating_clients")
+    )
+
+    return {
+        "id": str(model.id),
+        "version": model.version,
+        "dataset_type": model.dataset_type.value,
+        "source": model.source.value,
+        "framework": model.framework.value,
+        "path": model.path,
+        "checksum_sha256": model.checksum_sha256,
+        "is_active": model.is_active,
+        "input_dim": input_dim,
+        "feature_names": feature_names,
+        "total_rounds": metrics.get("round_number"),
+        "participating_hospitals": participating_hospitals,
+        "metrics": metrics,
+        "warnings": warnings,
+        "created_at": model.created_at.isoformat() if model.created_at else None,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -105,24 +151,7 @@ async def list_global_models(
         stmt = stmt.where(GlobalModel.dataset_type == dataset_type)
     result = await session.execute(stmt)
     models = result.scalars().all()
-    return [
-        {
-            "id": str(m.id),
-            "version": m.version,
-            "dataset_type": m.dataset_type.value,
-            "source": m.source.value,
-            "framework": m.framework.value,
-            "path": m.path,
-            "checksum_sha256": m.checksum_sha256,
-            "is_active": m.is_active,
-            "input_dim": m.input_dim,
-            "feature_names": m.feature_names,
-            "total_rounds": m.total_rounds,
-            "participating_hospitals": m.participating_hospitals,
-            "created_at": m.created_at.isoformat() if m.created_at else None,
-        }
-        for m in models
-    ]
+    return [_global_model_payload(m) for m in models]
 
 
 @router.get("/models/active", summary="Get the active global model")
@@ -146,19 +175,7 @@ async def get_active_model(
     m = result.scalar_one_or_none()
     if m is None:
         raise NotFoundError("Active global model")
-    return {
-        "id": str(m.id),
-        "version": m.version,
-        "dataset_type": m.dataset_type.value,
-        "source": m.source.value,
-        "framework": m.framework.value,
-        "is_active": m.is_active,
-        "input_dim": m.input_dim,
-        "feature_names": m.feature_names,
-        "total_rounds": m.total_rounds,
-        "participating_hospitals": m.participating_hospitals,
-        "created_at": m.created_at.isoformat() if m.created_at else None,
-    }
+    return _global_model_payload(m)
 
 
 # ---------------------------------------------------------------------------
@@ -205,7 +222,14 @@ async def cancel_training_round(
     ),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Mark a RUNNING or PENDING round as CANCELLED."""
+    """Mark a RUNNING or PENDING round as CANCELLED.
+
+    Advisory only: this updates the database record shown in the UI. The Flower
+    server runs independently (there is no control channel from the API to a
+    live Flower run), so a round already executing on the FL server is not
+    interrupted. Rounds are registered by the FL server only when they actually
+    complete or fail, so CANCELLED rows are typically stale PENDING records.
+    """
     r = await session.get(TrainingRound, round_id)
     if r is None:
         raise NotFoundError("Training round")
@@ -220,5 +244,8 @@ async def cancel_training_round(
     return {
         "round_id": str(round_id),
         "status": r.status.value,
-        "message": "Training round cancelled successfully",
+        "message": (
+            "Training round marked cancelled in the database "
+            "(advisory — a live Flower run is not interrupted)"
+        ),
     }

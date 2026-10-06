@@ -3,9 +3,9 @@ services:
     image: postgres:15-alpine
     container_name: fedpedia-postgres
     environment:
-      POSTGRES_DB: fedpedia_xai
-      POSTGRES_USER: fedpedia
-      POSTGRES_PASSWORD: change-this-in-your-local-env
+      POSTGRES_DB: ${POSTGRES_DB:-fedpedia_xai}
+      POSTGRES_USER: ${POSTGRES_USER:-fedpedia}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-this-in-your-local-env}
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
@@ -40,17 +40,19 @@ services:
       - 'CORS_ORIGINS=["http://localhost","http://127.0.0.1","http://localhost:80"]'
       - 'TRUSTED_HOSTS=["localhost","127.0.0.1","backend","frontend"]'
       - BOOTSTRAP_ADMIN_ENABLED=true
-      - DATABASE_URL=postgresql+asyncpg://fedpedia:change-this-in-your-local-env@postgres:5432/fedpedia_xai
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-fedpedia}:${POSTGRES_PASSWORD:-change-this-in-your-local-env}@postgres:5432/${POSTGRES_DB:-fedpedia_xai}
       - REDIS_URL=redis://redis:6379/0
       - SESSION_BACKEND=redis
       - RATE_LIMIT_BACKEND=redis
-      - JWT_SECRET_KEY=9e1d8825c3f8753230a10dfa6c6d05f3d5cfbe5f483d548f0291df4e4a8ea8a2
-      - JWT_REFRESH_SECRET_KEY=87e5b225c5d0d82937af96dfa2dfc838d2f1be3c4d7e9b048fa562bcdc91d1e4
+      # JWT signing secrets come from .env — never commit real values here.
+      # Generate: python -c "import secrets; print(secrets.token_hex(32))"
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env (see .env.example)}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:?JWT_REFRESH_SECRET_KEY must be set in .env (see .env.example)}
       - ARTIFACT_ROOT=/app/artifacts
       - REPORT_ROOT=/app/reports
       # AES-256-GCM PHI field encryption key (replace before deploying!)
       # Generate: python -c "import secrets,base64; print(base64.urlsafe_b64encode(secrets.token_bytes(32)).decode())"
-      - PATIENT_FIELD_ENCRYPTION_KEY=replace-with-32-byte-base64-encoded-key
+      - PATIENT_FIELD_ENCRYPTION_KEY=${PATIENT_FIELD_ENCRYPTION_KEY:?PATIENT_FIELD_ENCRYPTION_KEY must be set in .env (see .env.example)}
     volumes:
       - artifacts:/app/artifacts
       - reports:/app/reports
@@ -59,9 +61,40 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      seeder:
+        condition: service_completed_successfully
     command: sh -c "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port 8000"
     ports:
       - "8000:8000"
+
+  # One-shot: migrate schema, seed hospitals/users, train + activate bootstrap model.
+  # Backend and fl_server start only after this completes, so FL round 1 always
+  # starts from a registered global model (step 1 of the federated lifecycle).
+  seeder:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+    container_name: fedpedia-seeder
+    environment:
+      - APP_NAME=FedPedia-XAI
+      - APP_ENV=production
+      - APP_DEBUG=false
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-fedpedia}:${POSTGRES_PASSWORD:-change-this-in-your-local-env}@postgres:5432/${POSTGRES_DB:-fedpedia_xai}
+      - SESSION_BACKEND=memory
+      - RATE_LIMIT_BACKEND=memory
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY:?JWT_SECRET_KEY must be set in .env (see .env.example)}
+      - JWT_REFRESH_SECRET_KEY=${JWT_REFRESH_SECRET_KEY:?JWT_REFRESH_SECRET_KEY must be set in .env (see .env.example)}
+      - ARTIFACT_ROOT=/app/artifacts
+      - REPORT_ROOT=/app/reports
+      - PATIENT_FIELD_ENCRYPTION_KEY=${PATIENT_FIELD_ENCRYPTION_KEY:?PATIENT_FIELD_ENCRYPTION_KEY must be set in .env (see .env.example)}
+    volumes:
+      - artifacts:/app/artifacts
+      - reports:/app/reports
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    command: sh -c "alembic upgrade head && python seed_all.py"
 
   fl_server:
     build:
@@ -78,6 +111,9 @@ services:
       - FL_AGGREGATION_STRATEGY=fedavg
       - FL_DATASET_TYPE=heart_disease
       - FL_ARTIFACT_ROOT=/app/artifacts/models
+      # DB access so the FL server loads the active global model at round 0 and
+      # registers every aggregated round + the activated best model afterwards.
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-fedpedia}:${POSTGRES_PASSWORD:-change-this-in-your-local-env}@postgres:5432/${POSTGRES_DB:-fedpedia_xai}
       # mTLS — set FL_USE_MTLS=true and run: python scripts/gen_certs.py first
       - FL_USE_MTLS=false
       - FL_CA_CERT_PATH=/app/certs/ca.crt
@@ -90,6 +126,11 @@ services:
     volumes:
       - artifacts:/app/artifacts
       - certs:/app/certs
+    depends_on:
+      postgres:
+        condition: service_healthy
+      seeder:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
 
@@ -110,6 +151,7 @@ services:
     volumes:
       - certs:/app/certs
     command: python -m hospital_nodes.node_1.client
+    restart: on-failure
     depends_on:
       - fl_server
 
@@ -130,6 +172,7 @@ services:
     volumes:
       - certs:/app/certs
     command: python -m hospital_nodes.node_2.client
+    restart: on-failure
     depends_on:
       - fl_server
 
@@ -150,6 +193,7 @@ services:
     volumes:
       - certs:/app/certs
     command: python -m hospital_nodes.node_3.client
+    restart: on-failure
     depends_on:
       - fl_server
 

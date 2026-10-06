@@ -130,9 +130,7 @@ class PredictionService:
             dataset_type=payload.dataset_type,
             source=payload.model_source,
         )
-        features: dict[str, Any] = payload.features or PredictionService.patient_feature_payload(
-            patient
-        )
+        features: dict[str, Any] = PredictionService.patient_feature_payload(patient)
         artifact = ModelService.load_artifact(
             path=model.path,
             dataset_type=model.dataset_type,
@@ -142,6 +140,17 @@ class PredictionService:
             artifact=artifact,
             features=features,
             model_source=model.source,
+        )
+        logging.getLogger(__name__).info(
+            "model_inference_completed | patient_id=%s | model_id=%s | model_version=%s | "
+            "dataset_type=%s | source=%s | probability=%.6f | prediction=%d",
+            patient.id,
+            model.id,
+            model.version,
+            model.dataset_type.value,
+            model.source.value,
+            result.probability,
+            result.prediction,
         )
         prediction = Prediction(
             patient_id=patient.id,
