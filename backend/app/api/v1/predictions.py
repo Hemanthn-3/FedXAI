@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.dependencies import (
@@ -117,6 +117,7 @@ async def create_prediction(
 @router.get("", response_model=Page[PredictionRead])
 async def list_predictions(
     params: PaginationParams = Depends(),
+    hospital_id: uuid.UUID | None = Query(None, description="Filter by hospital ID for system admin"),
     current_user: User = Depends(
         require_roles(UserRole.DOCTOR, UserRole.HOSPITAL_ADMIN, UserRole.SYSTEM_ADMIN)
     ),
@@ -125,8 +126,9 @@ async def list_predictions(
     """List persisted predictions inside the user's hospital scope."""
 
     scoped_hospital_id = (
-        None if current_user.role == UserRole.SYSTEM_ADMIN else current_user.hospital_id
+        hospital_id if current_user.role == UserRole.SYSTEM_ADMIN else current_user.hospital_id
     )
+
     predictions, total = await PredictionService.list(
         session,
         offset=params.offset,

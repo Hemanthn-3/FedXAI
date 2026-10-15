@@ -14,13 +14,20 @@ export const authApi = {
 // Dashboard / System Metrics API
 export const metricsApi = {
   getSystemHealth: () => apiClient.get('/health'),
-  getTrainingRounds: () => apiClient.get('/training/rounds?limit=10'),
-  getPredictionStats: () => apiClient.get('/analytics/predictions/stats'),
+  getTrainingRounds: () => apiClient.get('/training/rounds?limit=100'),
+  triggerTrainingRound: () => apiClient.post('/training/rounds/trigger', {}),
+  getPredictionStats: (hospitalId) => apiClient.get(hospitalId ? `/analytics/predictions/stats?hospital_id=${hospitalId}` : '/analytics/predictions/stats'),
+};
+
+// Hospitals API
+export const hospitalsApi = {
+  list: () => apiClient.get('/hospitals'),
+  get: (id) => apiClient.get(`/hospitals/${id}`),
 };
 
 // Patients API
 export const patientsApi = {
-  list: () => apiClient.get('/patients'),
+  list: (hospitalId) => apiClient.get(hospitalId ? `/patients?hospital_id=${hospitalId}` : '/patients'),
   get: (id) => apiClient.get(`/patients/${id}`),
   create: (data) => apiClient.post('/patients', data),
   delete: (id) => apiClient.delete(`/patients/${id}`),
@@ -28,11 +35,12 @@ export const patientsApi = {
 
 // Predictions API
 export const predictionsApi = {
-  list: () => apiClient.get('/predictions'),
+  list: (hospitalId) => apiClient.get(hospitalId ? `/predictions?hospital_id=${hospitalId}` : '/predictions'),
   get: (id) => apiClient.get(`/predictions/${id}`),
   create: (data) => apiClient.post('/predictions', data),
   delete: (id) => apiClient.delete(`/predictions/${id}`),
 };
+
 
 // XAI & Reports API
 export const xaiApi = {

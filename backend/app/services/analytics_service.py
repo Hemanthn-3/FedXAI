@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
+
 
 from sqlalchemy import Integer, cast, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,7 +31,7 @@ class AnalyticsService:
         limit: int = 200,
     ) -> list[dict[str, Any]]:
         """Return training rounds as plain dicts for the analytics engine."""
-        stmt = select(TrainingRound).order_by(TrainingRound.round_number)
+        stmt = select(TrainingRound).order_by(TrainingRound.round_number.desc())
         if dataset_type is not None:
             stmt = stmt.where(TrainingRound.dataset_type == dataset_type)
         stmt = stmt.limit(limit)
@@ -135,8 +137,11 @@ class AnalyticsService:
         session: AsyncSession,
         *,
         dataset_type: DatasetType | None = None,
+        hospital_id: uuid.UUID | None = None,
     ) -> dict[str, Any]:
         """Aggregated prediction probability and risk breakdown."""
+        from backend.app.models.patient import Patient
+
         stmt = select(
             func.count(Prediction.id).label("total"),
             func.avg(Prediction.probability).label("avg_probability"),
@@ -149,24 +154,44 @@ class AnalyticsService:
             ),
             func.sum(cast(Prediction.risk_level == RiskLevel.LOW, Integer)).label("low_risk_count"),
         )
+        if hospital_id is not None:
+            stmt = stmt.join(Patient, Prediction.patient_id == Patient.id).where(Patient.hospital_id == hospital_id)
         if dataset_type is not None:
             stmt = stmt.where(Prediction.dataset_type == dataset_type)
         row = (await session.execute(stmt)).mappings().one_or_none()
 
-        xai_stmt = select(func.count(XAIReport.id))
-        if dataset_type is not None:
-            xai_stmt = xai_stmt.join(Prediction).where(Prediction.dataset_type == dataset_type)
+        xai_stmt = select(func.count(XAIReport.id)).select_from(XAIReport)
+        if hospital_id is not None or dataset_type is not None:
+            xai_stmt = xai_stmt.join(Prediction, XAIReport.prediction_id == Prediction.id)
+            if hospital_id is not None:
+                xai_stmt = xai_stmt.join(Patient, Prediction.patient_id == Patient.id).where(Patient.hospital_id == hospital_id)
+            if dataset_type is not None:
+                xai_stmt = xai_stmt.where(Prediction.dataset_type == dataset_type)
         xai_count = (await session.execute(xai_stmt)).scalar() or 0
+
+        patient_stmt = select(func.count(Patient.id)).select_from(Patient)
+        if hospital_id is not None:
+            patient_stmt = patient_stmt.where(Patient.hospital_id == hospital_id)
+        patient_count = (await session.scalar(patient_stmt)) or 0
 
         active_rounds_list = await AnalyticsService.list_rounds(session, dataset_type=dataset_type)
         rounds_count = len(active_rounds_list)
 
-        if row is None:
+        if row is None or row["total"] is None:
             return {
                 "total_predictions": 0,
-                "by_risk_level": {"high": 0, "moderate": 0, "low": 0},
-                "with_xai_report": 0,
-                "total_training_rounds": 0,
+                "positive_predictions": 0,
+                "negative_predictions": 0,
+                "positive_rate": 0.0,
+                "avg_probability": 0.0,
+                "by_risk_level": {
+                    "high": 0,
+                    "moderate": 0,
+                    "low": 0,
+                },
+                "with_xai_report": xai_count,
+                "total_patients": patient_count,
+                "total_training_rounds": rounds_count,
             }
 
         total = int(row["total"] or 0)
@@ -187,5 +212,7 @@ class AnalyticsService:
                 "low": low_risk,
             },
             "with_xai_report": xai_count,
+            "total_patients": patient_count,
             "total_training_rounds": rounds_count,
         }
+

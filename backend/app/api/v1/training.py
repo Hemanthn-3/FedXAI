@@ -214,6 +214,19 @@ async def node_status(
 # ---------------------------------------------------------------------------
 
 
+@router.post("/rounds/trigger", summary="Initiate new federated training round")
+async def trigger_federated_round(
+    current_user: User = Depends(  # noqa: ARG001
+        require_permissions(Permission.CONTROL_FL_ROUNDS)
+    ),
+    session: AsyncSession = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Execute a federated learning training round across isolated hospital nodes on admin demand."""
+    from backend.app.services.training_service import TrainingService
+
+    return await TrainingService.trigger_federated_round(session)
+
+
 @router.post("/rounds/{round_id}/cancel", summary="Cancel a running training round")
 async def cancel_training_round(
     round_id: uuid.UUID,
@@ -249,3 +262,4 @@ async def cancel_training_round(
             "(advisory — a live Flower run is not interrupted)"
         ),
     }
+

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
 from fastapi import APIRouter, Depends, Query
@@ -15,9 +16,10 @@ from analytics.fairness import (
 from backend.app.auth.dependencies import require_permissions
 from backend.app.auth.rbac import Permission
 from backend.app.database import get_db_session
-from backend.app.models.enums import DatasetType
+from backend.app.models.enums import DatasetType, UserRole
 from backend.app.models.user import User
 from backend.app.services.analytics_service import AnalyticsService
+
 
 router = APIRouter()
 
@@ -91,13 +93,20 @@ async def comparison_report(
 @router.get("/predictions/stats", summary="Prediction statistics")
 async def prediction_stats(
     dataset_type: DatasetType | None = Query(None),
-    current_user: User = Depends(  # noqa: ARG001
+    hospital_id: uuid.UUID | None = Query(None, description="Optional hospital filter for system admin"),
+    current_user: User = Depends(
         require_permissions(Permission.VIEW_METRICS)
     ),
     session: AsyncSession = Depends(get_db_session),
 ) -> dict[str, Any]:
     """Aggregated prediction counts, positive rate, and average probability."""
-    return await AnalyticsService.prediction_stats(session, dataset_type=dataset_type)
+    scoped_hospital_id = (
+        hospital_id if current_user.role == UserRole.SYSTEM_ADMIN else current_user.hospital_id
+    )
+    return await AnalyticsService.prediction_stats(
+        session, dataset_type=dataset_type, hospital_id=scoped_hospital_id
+    )
+
 
 
 # ---------------------------------------------------------------------------

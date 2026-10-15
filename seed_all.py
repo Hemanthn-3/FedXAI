@@ -14,7 +14,7 @@ Permanent Login Credentials
 ----------------------------
  Role            Email                        Password
  --------------- ---------------------------- --------------------
- hospital_admin  admin@fedpedia.com           FedAdmin@2025
+ system_admin    admin@fedpedia.com           FedAdmin@2025
  doctor          doctor.h1@fedpedia.com       DrNode1@2025
  doctor          doctor.h2@fedpedia.com       DrNode2@2025
  doctor          doctor.h3@fedpedia.com       DrNode3@2025
@@ -51,21 +51,13 @@ HOSPITALS = [
 ]
 
 USERS = [
-    # -- System admin -----------------------------------------------------------
+    # -- Main System Admin -----------------------------------------------------
     {
-        "name":      "System Administrator",
-        "email":     "sysadmin@fedpedia.com",
-        "password":  "SysAdmin@2025",
-        "role":      UserRole.SYSTEM_ADMIN,
-        "node_id":   None,
-    },
-    # -- Admin -----------------------------------------------------------------
-    {
-        "name":      "Hospital Admin",
+        "name":      "Main System Administrator",
         "email":     "admin@fedpedia.com",
         "password":  "FedAdmin@2025",
-        "role":      UserRole.HOSPITAL_ADMIN,
-        "node_id":   "hospital_1",
+        "role":      UserRole.SYSTEM_ADMIN,
+        "node_id":   None,
     },
     # -- Doctors ---------------------------------------------------------------
     {

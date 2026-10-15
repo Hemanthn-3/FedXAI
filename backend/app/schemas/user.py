@@ -56,6 +56,9 @@ class UserRead(ORMModel):
     email: EmailStr
     role: UserRole
     hospital_id: uuid.UUID | None
+    hospital_name: str | None = None
+    hospital_node_id: str | None = None
     is_active: bool
     created_at: datetime
     updated_at: datetime
+

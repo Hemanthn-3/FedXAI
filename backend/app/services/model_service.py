@@ -149,7 +149,17 @@ class ModelService:
             "means": [0.0] * input_dim,
             "scales": [1.0] * input_dim,
         }
-        if "preprocessing" not in payload:
+        if (
+            not preprocessing
+            or preprocessing.get("type") == "identity"
+            or all(m == 0.0 for m in preprocessing.get("means", []))
+        ) and dataset_type == DatasetType.HEART_DISEASE and input_dim == 9:
+            preprocessing = {
+                "type": "standardization",
+                "means": [54.19496855345912, 0.6761006289308176, 2.091194968553459, 131.6823899371069, 246.16666666666666, 0.14779874213836477, 149.47798742138366, 0.3333333333333333, 1.048742136912151],
+                "scales": [9.34151347778372, 0.46796214429179045, 0.9974107136975138, 17.680152801750104, 51.70070394356308, 0.35490037188016854, 23.4891481642932, 0.47140452079103173, 1.1640777499449597],
+            }
+        elif "preprocessing" not in payload:
             warnings = (
                 *warnings,
                 "Model artifact did not include preprocessing metadata; identity transform used.",

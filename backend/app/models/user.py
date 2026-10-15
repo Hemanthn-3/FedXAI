@@ -52,5 +52,14 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     hospital: Mapped["Hospital | None"] = relationship(back_populates="users")
     audit_logs: Mapped[list["AuditLog"]] = relationship(back_populates="user")
 
+    @property
+    def hospital_name(self) -> str | None:
+        return self.hospital.name if self.hospital else None
+
+    @property
+    def hospital_node_id(self) -> str | None:
+        return self.hospital.node_id if self.hospital else None
+
     def __repr__(self) -> str:
         return f"User(id={self.id!s}, email={self.email!r}, role={self.role.value!r})"
+

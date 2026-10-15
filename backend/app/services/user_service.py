@@ -3,6 +3,7 @@
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.app.auth.security import hash_password, verify_password
@@ -16,11 +17,18 @@ from backend.app.services.hospital_service import HospitalService
 class UserService:
     @staticmethod
     async def get_by_id(session: AsyncSession, user_id: uuid.UUID) -> User | None:
-        return await session.get(User, user_id)
+        stmt = select(User).where(User.id == user_id).options(selectinload(User.hospital))
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
 
     @staticmethod
     async def get_by_email(session: AsyncSession, email: str) -> User | None:
-        result = await session.execute(select(User).where(User.email == email.lower()))
+        stmt = (
+            select(User)
+            .where(User.email == email.lower())
+            .options(selectinload(User.hospital))
+        )
+        result = await session.execute(stmt)
         return result.scalar_one_or_none()
 
     @staticmethod
@@ -48,11 +56,13 @@ class UserService:
         result = await session.execute(
             select(User)
             .where(*filters)
+            .options(selectinload(User.hospital))
             .order_by(User.created_at.desc())
             .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all()), total
+
 
     @staticmethod
     async def create(session: AsyncSession, payload: UserCreate) -> User:

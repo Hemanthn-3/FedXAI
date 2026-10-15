@@ -1,38 +1,38 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
 :root {
-  /* Premium Dark Theme Core */
-  --bg-primary: #0f1115;
-  --bg-secondary: #161920;
-  --bg-glass: rgba(22, 25, 32, 0.65);
-  --bg-glass-hover: rgba(35, 40, 50, 0.85);
+  /* Premium Clinical Healthcare Core Palette */
+  --bg-primary: #f8f9ff;
+  --bg-secondary: #eff4ff;
+  --bg-glass: rgba(255, 255, 255, 0.85);
+  --bg-glass-hover: rgba(255, 255, 255, 0.98);
 
   /* Borders & Dividers */
-  --border-glass: rgba(255, 255, 255, 0.08);
-  --border-highlight: rgba(255, 255, 255, 0.15);
+  --border-glass: rgba(11, 28, 48, 0.08);
+  --border-highlight: rgba(0, 88, 190, 0.25);
 
   /* Typography */
-  --text-primary: #f8fafc;
-  --text-secondary: #94a3b8;
-  --text-muted: #64748b;
+  --text-primary: #0b1c30;
+  --text-secondary: #424754;
+  --text-muted: #727785;
 
-  /* Accent Colors (Vibrant/Neon) */
-  --accent-primary: #3b82f6;     /* Bright Blue */
-  --accent-primary-hover: #2563eb;
-  --accent-secondary: #8b5cf6;   /* Purple */
-  --accent-success: #10b981;     /* Emerald */
-  --accent-warning: #f59e0b;     /* Amber */
-  --accent-danger: #ef4444;      /* Red */
+  /* Accent Colors */
+  --accent-primary: #0058be;     /* Clinical Cobalt */
+  --accent-primary-hover: #004395;
+  --accent-secondary: #6b38d4;   /* Royal Iris */
+  --accent-success: #008378;     /* Precision Teal */
+  --accent-warning: #d97706;     /* Amber */
+  --accent-danger: #ba1a1a;      /* Clinical Alert Red */
 
   /* Gradients */
-  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
-  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.01) 100%);
+  --gradient-primary: linear-gradient(135deg, #0058be 0%, #6b38d4 100%);
+  --gradient-glass: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(255, 255, 255, 0.6) 100%);
 
   /* Shadows */
-  --shadow-sm: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.4);
-  --shadow-glow: 0 0 15px rgba(59, 130, 246, 0.35);
+  --shadow-sm: 0 2px 8px rgba(11, 28, 48, 0.04);
+  --shadow-md: 0 10px 24px -4px rgba(11, 28, 48, 0.08);
+  --shadow-lg: 0 20px 32px -8px rgba(11, 28, 48, 0.12);
+  --shadow-glow: 0 4px 18px rgba(0, 88, 190, 0.25);
 
   /* Transitions */
   --transition-fast: 0.15s ease-out;
@@ -46,17 +46,13 @@
 }
 
 body {
-  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background-color: var(--bg-primary);
   color: var(--text-primary);
   min-height: 100vh;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background-image: 
-    radial-gradient(circle at 15% 50%, rgba(59, 130, 246, 0.08) 0%, transparent 50%),
-    radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08) 0%, transparent 50%);
-  background-attachment: fixed;
 }
 
 /* Glassmorphism Utilities */
